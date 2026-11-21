@@ -529,16 +529,42 @@ def compute_np_metric(
     gen_index_map = {s.scene_id: i for i, s in enumerate(generated)}
     ref_index_map = {s.scene_id: i for i, s in enumerate(reference)}
 
+    # Use matched-pair IDs as the shared universe for both views.
+    # This implements:
+    # N~_S(i) = {(i', j') in M : i' in N_S(i)}
+    # N~_V(j) = {(i', j') in M : j' in N_V(j)}
+    gen_to_pair = {
+        g.scene_id: pair_id
+        for pair_id, (g, _, _) in enumerate(matches)
+    }
+    ref_to_pair = {
+        r.scene_id: pair_id
+        for pair_id, (_, r, _) in enumerate(matches)
+    }
+
     jaccards = []
     for g_scene, r_scene, _ in matches:
         g_idx = gen_index_map.get(g_scene.scene_id)
         r_idx = ref_index_map.get(r_scene.scene_id)
         if g_idx is None or r_idx is None:
             continue
-        set_g = gen_neighbors[g_idx]
-        set_r = ref_neighbors[r_idx]
+
+        # Both sets now contain matched-pair IDs, not raw list positions.
+        set_g = {
+            gen_to_pair[generated[q].scene_id]
+            for q in gen_neighbors[g_idx]
+            if generated[q].scene_id in gen_to_pair
+        }
+        set_r = {
+            ref_to_pair[reference[q].scene_id]
+            for q in ref_neighbors[r_idx]
+            if reference[q].scene_id in ref_to_pair
+        }
+
         inter = len(set_g & set_r)
         union = len(set_g | set_r)
+
+        # No shared matched neighbours means no measurable preservation.
         jac = inter / union if union > 0 else 0.0
         jaccards.append(jac)
 
